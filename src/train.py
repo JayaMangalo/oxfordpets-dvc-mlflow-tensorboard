@@ -3,14 +3,14 @@ import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torchvision import datasets, transforms, models
 from torch.utils.data import DataLoader
+from torchvision import datasets, transforms, models
 from torch.utils.tensorboard import SummaryWriter
-import yaml
-import json
 import mlflow
 import mlflow.pytorch
-
+import yaml
+import json
+from preprocess import preprocess_data
 # Load hyperparameters from params.yaml
 with open("src/params.yaml") as f:
     params = yaml.safe_load(f)
@@ -19,20 +19,6 @@ EPOCHS = params["epochs"]
 IMG_SIZE = params["img_size"]
 LEARNING_RATES = params["lr_list"]
 BATCH_SIZES = params["batch_size_list"]
-
-# Transforms
-transform = transforms.Compose([
-    transforms.Resize((IMG_SIZE, IMG_SIZE)),
-    transforms.ToTensor(),
-    transforms.Normalize([0.5]*3, [0.5]*3)
-])
-
-# Dataset and DataLoader
-data_dir = "data/oxford-iiit-pet/images"
-dataset = datasets.ImageFolder(data_dir, transform=transform)
-
-# Device setup
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Define model builders
 def build_simple_cnn(num_classes):
@@ -65,25 +51,38 @@ model_builders = {
     "resnet18": build_resnet18
 }
 
-mlflow.set_experiment("OxfordPets-MultiModel-Tracking")
+# Load preprocessed data
+data_dir = "data/processed_data/train"  # DVC-tracked preprocessed data
+transform = transforms.Compose([
+    transforms.Resize((IMG_SIZE, IMG_SIZE)),
+    transforms.ToTensor(),
+    transforms.Normalize([0.5] * 3, [0.5] * 3)
+])
 
+# Load the dataset from ImageFolder (this assumes the data is organized in class-specific subfolders)
+train_dataset = datasets.ImageFolder(data_dir, transform=transform)
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+mlflow.set_experiment("OxfordPets-MultiModel-Tracking")
+print(f"Using device: {device}")
+# Training loop for each model
 for model_name, builder in model_builders.items():
     for lr in LEARNING_RATES:
         for batch_size in BATCH_SIZES:
-            dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-            model = builder(len(dataset.classes)).to(device)
+            dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+            model = builder(len(train_dataset.classes)).to(device)
             criterion = nn.CrossEntropyLoss()
             optimizer = optim.Adam(model.parameters(), lr=lr)
 
-            
-            
-            with mlflow.start_run(run_name=f"{model_name}-lr{lr}-bs{batch_size}"):
+            model_file = f"{model_name}_lr{lr}_bs{batch_size}.pt"
+            with mlflow.start_run(run_name=f"train_{model_file}"):
                 mlflow.log_param("model", model_name)
                 mlflow.log_param("epochs", EPOCHS)
-                mlflow.log_param("img_size", IMG_SIZE)
                 mlflow.log_param("lr", lr)
                 mlflow.log_param("batch_size", batch_size)
-                writer = SummaryWriter(log_dir=f"logs/{model_name}_lr{lr}_bs{batch_size}")
+                writer = SummaryWriter(log_dir=f"logs/train/{model_file}")
+                dummy_input = torch.randn(1, 3, IMG_SIZE, IMG_SIZE).to(device)
+                writer.add_graph(model, dummy_input)
                 
                 for epoch in range(EPOCHS):
                     model.train()
@@ -113,13 +112,18 @@ for model_name, builder in model_builders.items():
                     mlflow.log_metric("accuracy", epoch_acc, step=epoch)
                     writer.add_scalar("Loss/train", epoch_loss, epoch)
                     writer.add_scalar("Accuracy/train", epoch_acc, epoch)
-                
-                writer.close()
+
                 # Save model
-                model_path = f"models/{model_name}_lr{lr}_bs{batch_size}.pt"
+                model_path = f"models/{model_file}"
                 os.makedirs("models", exist_ok=True)
                 torch.save(model.state_dict(), model_path)
-                mlflow.pytorch.log_model(model, "model")
                 
-                mlflow.log_artifact("metrics.json")
+                dummy_input_numpy = dummy_input.cpu().numpy()
 
+                # Log the model with the converted dummy input example
+                mlflow.pytorch.log_model(model, name="model", registered_model_name=f"OxfordPetsModel_{model_name}", 
+                                         input_example=dummy_input_numpy)
+                mlflow.log_artifact(model_path)
+
+                writer.add_embedding(images.view(images.size(0), -1), metadata=labels, tag="embeddings")
+                writer.close()

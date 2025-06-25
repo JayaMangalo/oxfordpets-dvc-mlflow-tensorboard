@@ -1,0 +1,21 @@
+stages:
+  preprocess_data:
+    cmd: python src/preprocess.py
+    deps:
+    - src/preprocess.py
+    outs:
+    - data/processed_data
+  train_model:
+    cmd: python src/train.py
+    deps:
+    - data/processed_data
+    - src/train.py
+    outs:
+    - models
+  evaluate_model:
+    cmd: python src/evaluate.py
+    deps:
+    - models
+    - src/evaluate.py
+    outs:
+    - metrics/results.json

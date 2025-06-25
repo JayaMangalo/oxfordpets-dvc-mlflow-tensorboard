@@ -1,4 +1,4 @@
-epochs: 5
+epochs: 8
 img_size: 128
-lr_list: [0.001, 0.0005]
-batch_size_list: [16, 32]
+lr_list: [0.0005]
+batch_size_list: [32]
