@@ -116,6 +116,9 @@ for model_file in model_files:
 
 # Save to json
 import json
+
+
+os.makedirs("metrics", exist_ok=True)
 results_path = "metrics/results.json"
 with open(results_path, "w") as f:
     json.dump(results, f, indent=4)
