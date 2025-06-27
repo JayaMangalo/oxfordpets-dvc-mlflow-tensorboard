@@ -68,8 +68,7 @@ You can check the visualization of tensorboard and mlflow here:
 ```bash
     tensorboard --logdir=logs/
 ```
-
-```bash
 and 
+```bash
     mlflow ui
 ```
